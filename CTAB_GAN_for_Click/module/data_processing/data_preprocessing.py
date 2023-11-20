@@ -3,7 +3,6 @@ import pandas as pd
 
 
 class DataPreprocessing:
-
     """
     Preprocess the raw data csv to for chunk training.
     """
@@ -12,18 +11,23 @@ class DataPreprocessing:
                  raw_csv_path: str,
                  categorical_column: list,
                  mixed_columns: dict,
+                 integer_columns: list,
                  processed_csv_path: str
                  ):
         self.raw_csv_path = raw_csv_path
         self.categorical_column = categorical_column
         self.mixed_column = mixed_columns
+        self.integer_column = integer_columns
         self.processed_csv_path = processed_csv_path
 
         self.categorical_columns_minor_terms = {}
         self.data = pd.DataFrame()
+        self.preprocess()
 
     def preprocess(self):
         self.data = pd.read_csv(self.raw_csv_path)
+        print("Finished reading")
+        print(self.data.head(5))
         self.data_transformation()
         self.handle_missing_values()
         self.handle_superfluous_categories()
@@ -43,10 +47,10 @@ class DataPreprocessing:
         # Save processed dataframe back to the original csv file
         # new_data.to_csv(self.chunk_csv_path, index=False)
         self.data = new_data
-        self.mixed_column['Hour'] = []
-        self.mixed_column['Year'] = []
-        self.mixed_column['Month'] = []
-        self.mixed_column['Day'] = []
+        self.integer_column.append('Hour')
+        self.integer_column.append('Year')
+        self.integer_column.append('Month')
+        self.integer_column.append('Day')
 
     def handle_missing_values(self):
         self.data = self.data.replace(r' ', np.nan)
@@ -69,31 +73,32 @@ class DataPreprocessing:
                     self.mixed_column[column] = [-9999999]
 
     def handle_superfluous_categories(self):
-        processed_data = self.data
         data_length = self.data.shape[0]
-        for col in processed_data:
-            if col == 'id':
+        for col in self.data.columns:
+            if col == 'id' or col not in self.categorical_column:
                 continue
-            else:
-                if col in self.categorical_column:
-                    all_minor_terms_sum = 0
-                    this_column = self.data[col].value_counts()
-                    if len(this_column) > 25:
-                        self.categorical_columns_minor_terms[col] = {}
-                        for idx in this_column.index:
-                            if this_column[idx] < 0.05 * data_length and idx != -9999999:
-                                all_minor_terms_sum += this_column[idx]
-                                self.categorical_columns_minor_terms[col][idx] = this_column[idx]
-                                processed_data[col].apply(lambda x: "others")
-                        for idx in self.categorical_columns_minor_terms[col]:
-                            self.categorical_columns_minor_terms[col][idx] /= all_minor_terms_sum
-        self.data = processed_data
+
+            value_counts = self.data[col].value_counts()
+            if len(value_counts) > 25:
+                self.categorical_columns_minor_terms[col] = {}
+                minor_terms_mask = (value_counts < 0.05 * data_length) & (value_counts.index != -9999999)
+
+                # Calculate the sum of all minor terms
+                all_minor_terms_sum = value_counts[minor_terms_mask].sum()
+
+                # Store the proportion of each minor term
+                for term in value_counts[minor_terms_mask].index:
+                    self.categorical_columns_minor_terms[col][term] = value_counts[term] / all_minor_terms_sum
+
+                # Update the DataFrame to combine minor terms into "others"
+                minor_terms_set = set(value_counts[minor_terms_mask].index)
+                self.data[col] = self.data[col].apply(lambda x: "others" if x in minor_terms_set else x)
 
     def write_processed_data(self):
         self.data.to_csv(self.processed_csv_path)
 
-    def get_mixed_columns(self):
-        return self.mixed_column
+    def get_integer_columns(self):
+        return self.integer_column
 
     def get_categorical_columns_minor_terms(self):
         return self.categorical_columns_minor_terms

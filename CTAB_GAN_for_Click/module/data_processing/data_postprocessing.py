@@ -15,10 +15,10 @@ class DataPostprocessing:
                  log_applied_columns: list,
                  mixed_columns: dict,
                  integer_column: list,
-                 target: dict,
                  categorical_columns_minor_terms: dict,
                  label_encoder_list: list,
-                 lower_bounds: dict
+                 lower_bounds: dict,
+                 eps: int = 1
                  ):
 
         self.data = generated_data
@@ -27,11 +27,21 @@ class DataPostprocessing:
         self.log_columns = log_applied_columns
         self.mixed_columns = mixed_columns
         self.integer_column = integer_column
-        self.target = target
         self.categorical_columns_minor_terms = categorical_columns_minor_terms
         self.label_encoder_list = label_encoder_list
         self.lower_bounds = lower_bounds
         self.data_sample = pd.DataFrame()
+
+    def inverse_most(self, eps=1):
+        self.inverse_encoding_categorical_columns()
+        self.inverse_log_transform(eps)
+        self.round_integer()
+        self.fill_categorical_minor_terms()
+        self.recover_missing_value()
+
+    def inverse_all(self, eps=1):
+        self.inverse_most(eps)
+        self.merge_date()
 
     def inverse_encoding_categorical_columns(self):
         self.data_sample = pd.DataFrame(self.data, columns=self.training_data_columns)
@@ -40,7 +50,7 @@ class DataPostprocessing:
             col = self.label_encoder_list[i]["column"]
             self.data_sample[col] = le.inverse_transform(self.data_sample[col])
 
-    def inverse_log_transform(self, eps):
+    def inverse_log_transform(self, eps=1):
         if self.log_columns:
             for column in self.log_columns:
                 lower_bound = self.lower_bounds[column]

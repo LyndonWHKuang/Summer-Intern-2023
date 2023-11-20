@@ -48,6 +48,7 @@ class DataTransformer:
         self.components = []
         self.filter_arr = []
         self.model = []
+        self.get_metadata()
 
     def get_metadata(self):
         meta = []
