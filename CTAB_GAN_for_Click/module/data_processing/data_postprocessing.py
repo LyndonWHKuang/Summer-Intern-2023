@@ -32,14 +32,14 @@ class DataPostprocessing:
         self.lower_bounds = lower_bounds
         self.data_sample = pd.DataFrame()
 
-    def inverse_most(self, eps=1):
+    def inverse_most(self, eps):
         self.inverse_encoding_categorical_columns()
         self.inverse_log_transform(eps)
         self.round_integer()
         self.fill_categorical_minor_terms()
         self.recover_missing_value()
 
-    def inverse_all(self, eps=1):
+    def inverse_all(self, eps):
         self.inverse_most(eps)
         self.merge_date()
 
@@ -50,7 +50,7 @@ class DataPostprocessing:
             col = self.label_encoder_list[i]["column"]
             self.data_sample[col] = le.inverse_transform(self.data_sample[col])
 
-    def inverse_log_transform(self, eps=1):
+    def inverse_log_transform(self, eps):
         if self.log_columns:
             for column in self.log_columns:
                 lower_bound = self.lower_bounds[column]

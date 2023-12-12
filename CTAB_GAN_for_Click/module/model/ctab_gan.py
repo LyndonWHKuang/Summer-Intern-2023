@@ -41,8 +41,10 @@ class CTABGAN():
                  target: dict,
                  num_epochs: int,
                  processed_csv_path: str,
-                 chunk_size: int,
-                 chunk_csv_path: str):
+                 # chunk_size: int,
+                 # chunk_csv_path: str
+                 ):
+
         self.sample_length = 0
         self.processed_csv_path = processed_csv_path
         self.raw_csv_path = raw_csv_path
