@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from sklearn.mixture import BayesianGaussianMixture
+import json
 
 
 class DataTransformer:
@@ -78,6 +79,8 @@ class DataTransformer:
                     "max": column.max(),
                 })
         self.meta_data = meta
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/meta_data.json', 'w') as json_file:
+            json.dump(self.meta_data, json_file)
 
     def fit_bgm(self, data_column):
         gm = BayesianGaussianMixture(
@@ -136,13 +139,20 @@ class DataTransformer:
                 self.output_dim += info['size']
 
         self.model = model
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/model.json', 'w') as model_file:
+            json.dump(self.model, model_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_info.json', 'w') as output_info_file:
+            json.dump(self.output_info, output_info_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/components.json', 'w') as components_file:
+            json.dump(self.components, components_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_dim.json', 'w') as output_dim_file:
+            json.dump(self.output_dim, output_dim_file)
 
     def transform(self, data):
         # stores the transformed values
         values = []
         # used for accessing filter_arr for transforming mixed columns
         mixed_counter = 0
-
         for id_, info in enumerate(self.meta_data):
             current = data[:, id_]
             if info['type'] == "continuous":

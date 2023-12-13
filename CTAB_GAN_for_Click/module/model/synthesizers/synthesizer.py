@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 import torch.utils.data
 import torch.optim as optim
+import json
 from torch.optim import Adam
 
 from torch.nn import (BCELoss, CrossEntropyLoss)
@@ -32,6 +33,9 @@ class CTABGANSynthesizer:
         Initializes the model with user specified parameters.
         """
 
+        self.components = None
+        self.output_info = None
+        self.model = None
         self.Dtransformer = None
         self.Gtransformer = None
         self.cond_generator = None
@@ -82,6 +86,17 @@ class CTABGANSynthesizer:
         self.transformer = DataTransformer(training_data=train_data, categorical_column=categorical, 
                                            mixed_column=mixed)
         self.transformer.fit()
+        del self.transformer
+
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/model.json', 'r') as model_file:
+            self.model = json.load(model_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_info.json', 'r') as output_info_file:
+            self.output_info = json.load(output_info_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/components.json', 'r') as components_file:
+            self.components = json.load(components_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_dim.json', 'r') as output_dim_file:
+            self.output_info = json.load(output_dim_file)
+
         train_data = self.transformer.transform(train_data.values)
 
         return train_data, target_index, problem_type
@@ -130,8 +145,8 @@ class CTABGANSynthesizer:
 
         return data_sampler, discriminator, optimizerG, optimizerD, classifier, optimizerC, st_ed
 
-    def training_loop(self, train_data, steps_per_epoch, data_sampler, optimizerG, optimizerD, classifier, optimizerC, st_ed,
-                      problem_type, discriminator):
+    def training_loop(self, train_data, steps_per_epoch, data_sampler, optimizerG, optimizerD, classifier, optimizerC,
+                      st_ed, problem_type, discriminator):
         for i in tqdm(range(self.epochs)):
             for _ in range(steps_per_epoch):
                 real_cat_d, real = self.train_discriminator(data_sampler, optimizerD, discriminator)
@@ -191,7 +206,7 @@ class CTABGANSynthesizer:
         # computing the probability of the discriminator to correctly classify fake samples hence
         # y_fake should ideally be close to 0
         y_fake, _ = discriminator(fake_cat_d)
-        # computing the loss to essentially maximize the log likelihood of correctly classifiying
+        # computing the loss to essentially maximize the log likelihood of correctly classifying
         # real and fake samples as log(D(x))+log(1−D(G(z)))
         # or equivalently minimizing the negative of log(D(x))+log(1−D(G(z))) as done below
         loss_d = (-(torch.log(y_real + 1e-4).mean()) - (torch.log(1. - y_fake + 1e-4).mean()))
@@ -223,22 +238,25 @@ class CTABGANSynthesizer:
         fake_cat = torch.cat([fakeact, c], dim=1)
         fake_cat = self.Dtransformer.transform(fake_cat)
 
-        # computing the probability of the discriminator classifiying fake samples as real
-        # along with feature representaions of fake data resulting from the penultimate layer
+        # computing the probability of the discriminator classifying fake samples as real
+        # along with feature representations of fake data resulting from the penultimate layer
         y_fake, info_fake = discriminator(fake_cat)
         # extracting feature representation of real data from the penultimate layer of the discriminator
         _, info_real = discriminator(real_cat_d)
-        # computing the conditional loss to ensure the generator generates data records with the chosen category as per the conditional vector
+        # computing the conditional loss to ensure the generator generates data records with the chosen category as per
+        # the conditional vector
         cross_entropy = cond_loss(faket, self.transformer.output_info, c, m)
 
         # computing the loss to train the generator where we want y_fake to be close to 1 to fool the discriminator
         # and cross_entropy to be close to 0 to ensure generator's output matches the conditional vector
         g = -(torch.log(y_fake + 1e-4).mean()) + cross_entropy
-        # in order to backprop the gradient of separate losses w.r.t to the learnable weight of the network independently
+        # in order to backprop the gradient of separate losses w.r.t to the learnable weight of the network
+        # independently
         # we may use retain_graph=True in backward() method in the first back-propagated loss
         # to maintain the computation graph to execute the second backward pass efficiently
         g.backward(retain_graph=True)
-        # computing the information loss by comparing means and stds of real/fake feature representations extracted from discriminator's penultimate layer
+        # computing the information loss by comparing means and stds of real/fake feature representations extracted
+        # from discriminator's penultimate layer
         loss_mean = torch.norm(torch.mean(info_fake.view(self.batch_size, -1), dim=0) - torch.mean(
             info_real.view(self.batch_size, -1), dim=0), 1)
         loss_std = torch.norm(torch.std(info_fake.view(self.batch_size, -1), dim=0) - torch.std(

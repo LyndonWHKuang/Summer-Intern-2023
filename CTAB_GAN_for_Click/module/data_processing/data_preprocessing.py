@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import json
 
 
 class DataPreprocessing:
@@ -32,6 +33,8 @@ class DataPreprocessing:
         self.handle_missing_values()
         self.handle_superfluous_categories()
         self.write_processed_data()
+        self.write_integer_columns()
+        self.write_categorical_columns_minor_terms()
 
     def data_transformation(self):
         new_data = self.data.copy()  # copy the dataframe to avoid modifying the original one
@@ -97,8 +100,12 @@ class DataPreprocessing:
     def write_processed_data(self):
         self.data.to_csv(self.processed_csv_path)
 
-    def get_integer_columns(self):
-        return self.integer_column
+    def write_integer_columns(self):
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/integer_columns.json', 'w') \
+                as integer_columns_file:
+            json.dump(self.integer_column, integer_columns_file)
 
-    def get_categorical_columns_minor_terms(self):
-        return self.categorical_columns_minor_terms
+    def write_categorical_columns_minor_terms(self):
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/categorical_columns_minor_terms.json',
+                  'w') as categorical_columns_minor_terms_file:
+            json.dump(self.categorical_columns_minor_terms, categorical_columns_minor_terms_file)

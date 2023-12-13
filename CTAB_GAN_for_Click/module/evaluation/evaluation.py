@@ -327,5 +327,5 @@ def privacy_metrics(real_path, fake_path, data_percent=15):
     nn_ratio_ff = np.array([i[0] / i[1] for i in smallest_two_ff])
     nn_fifth_perc_ff = np.percentile(nn_ratio_ff, 5)
 
-    return np.array(
-        [fifth_perc_rf, fifth_perc_rr, fifth_perc_ff, nn_fifth_perc_rf, nn_fifth_perc_rr, nn_fifth_perc_ff]).reshape(1, 6)
+    return np.array([fifth_perc_rf, fifth_perc_rr, fifth_perc_ff, nn_fifth_perc_rf,
+                     nn_fifth_perc_rr, nn_fifth_perc_ff]).reshape(1, 6)
