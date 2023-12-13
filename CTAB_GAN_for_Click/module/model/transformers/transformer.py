@@ -32,12 +32,14 @@ class DataInitializer:
         """
 
     def __init__(self,
+                 root_path: str,
                  training_data: pd.DataFrame,
                  categorical_column: list,
                  mixed_column: dict,
                  n_cluster=10,
                  eps=0.005):
         self.meta_data = None
+        self.root_path = root_path
         self.training_data = training_data
         self.categorical_columns = categorical_column
         self.mixed_columns = mixed_column
@@ -79,7 +81,7 @@ class DataInitializer:
                     "max": column.max(),
                 })
         self.meta_data = meta
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/meta_data.json', 'w') as json_file:
+        with open(self.root_path + '/model/transformer/meta_data.json', 'w') as json_file:
             json.dump(self.meta_data, json_file)
 
     def fit_bgm(self, data_column):
@@ -139,13 +141,13 @@ class DataInitializer:
                 self.output_dim += info['size']
 
         self.model = model
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/model.json', 'w') as model_file:
+        with open(self.root_path + '/model/transformer/model.json', 'w') as model_file:
             json.dump(self.model, model_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_info.json', 'w') as output_info_file:
+        with open(self.root_path + '/model/transformer/output_info.json', 'w') as output_info_file:
             json.dump(self.output_info, output_info_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/components.json', 'w') as components_file:
+        with open(self.root_path + '/model/transformer/components.json', 'w') as components_file:
             json.dump(self.components, components_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_dim.json', 'w') as output_dim_file:
+        with open(self.root_path + '/model/transformer/output_dim.json', 'w') as output_dim_file:
             json.dump(self.output_dim, output_dim_file)
 
 

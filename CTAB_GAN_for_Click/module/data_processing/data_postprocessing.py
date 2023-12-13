@@ -31,16 +31,17 @@ class DataPostprocessing:
         self.label_encoder_list = label_encoder_list
         self.lower_bounds = lower_bounds
         self.data_sample = pd.DataFrame()
+        self.eps = eps
 
-    def inverse_most(self, eps):
+    def inverse_most(self):
         self.inverse_encoding_categorical_columns()
-        self.inverse_log_transform(eps)
+        self.inverse_log_transform()
         self.round_integer()
         self.fill_categorical_minor_terms()
         self.recover_missing_value()
 
-    def inverse_all(self, eps):
-        self.inverse_most(eps)
+    def inverse_all(self):
+        self.inverse_most()
         self.merge_date()
 
     def inverse_encoding_categorical_columns(self):
@@ -50,7 +51,7 @@ class DataPostprocessing:
             col = self.label_encoder_list[i]["column"]
             self.data_sample[col] = le.inverse_transform(self.data_sample[col])
 
-    def inverse_log_transform(self, eps):
+    def inverse_log_transform(self):
         if self.log_columns:
             for column in self.log_columns:
                 lower_bound = self.lower_bounds[column]
@@ -59,12 +60,11 @@ class DataPostprocessing:
                     self.data_sample[column].apply(lambda x: np.exp(x) if x != -9999999 else -9999999)
                 elif lower_bound == 0:
                     self.data_sample[column] = self.data_sample[column].apply(
-                        lambda x: np.ceil(np.exp(x) - eps) if ((x != -9999999) & ((np.exp(x) - eps) < 0)) else (
-                            np.exp(x) - eps
-                            if x != -9999999 else -9999999))
+                        lambda x: np.ceil(np.exp(x) - self.eps) if ((x != -9999999) & ((np.exp(x) - self.eps) < 0))
+                        else (np.exp(x) - self.eps if x != -9999999 else -9999999))
                 else:
                     self.data_sample[column] = self.data_sample[column].apply(
-                        lambda x: np.exp(x) - eps + lower_bound if x != -9999999 else -9999999)
+                        lambda x: np.exp(x) - self.eps + lower_bound if x != -9999999 else -9999999)
 
     def round_integer(self):
         if self.integer_column:

@@ -13,13 +13,15 @@ class DataPreprocessing:
                  categorical_column: list,
                  mixed_columns: dict,
                  integer_columns: list,
-                 processed_csv_path: str
+                 processed_csv_path: str,
+                 root_path: str
                  ):
         self.raw_csv_path = raw_csv_path
         self.categorical_column = categorical_column
         self.mixed_column = mixed_columns
         self.integer_column = integer_columns
         self.processed_csv_path = processed_csv_path
+        self.root_path = root_path
 
         self.categorical_columns_minor_terms = {}
         self.data = pd.DataFrame()
@@ -101,11 +103,10 @@ class DataPreprocessing:
         self.data.to_csv(self.processed_csv_path)
 
     def write_integer_columns(self):
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/integer_columns.json', 'w') \
-                as integer_columns_file:
+        with open(self.root_path + '/data_processing/integer_columns.json', 'w') as integer_columns_file:
             json.dump(self.integer_column, integer_columns_file)
 
     def write_categorical_columns_minor_terms(self):
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/categorical_columns_minor_terms.json',
-                  'w') as categorical_columns_minor_terms_file:
+        with open(self.root_path + '/data_processing/categorical_columns_minor_terms.json', 'w') \
+                as categorical_columns_minor_terms_file:
             json.dump(self.categorical_columns_minor_terms, categorical_columns_minor_terms_file)

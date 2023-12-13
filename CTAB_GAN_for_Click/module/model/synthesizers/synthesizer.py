@@ -25,6 +25,7 @@ class CTABGANSynthesizer:
 
     def __init__(self,
                  chunk_size,
+                 root_path,
                  class_dim=(256, 256, 256, 256),
                  random_dim=100,
                  num_channels=64,
@@ -36,6 +37,7 @@ class CTABGANSynthesizer:
         Initializes the model with user specified parameters.
         """
 
+        self.root_path = root_path
         self.meta_data = None
         self.optimizerC = None
         self.optimizerD = None
@@ -89,27 +91,26 @@ class CTABGANSynthesizer:
                 target_index = train_data.columns.get_loc(types[problem_type])
 
         self.data_initializer = DataInitializer(training_data=train_data, categorical_column=categorical,
-                                                mixed_column=mixed)
+                                                mixed_column=mixed, root_path=self.root_path)
         self.data_initializer.fit()
         del self.data_initializer
 
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/model.json', 'r') as model_file:
+        with open(self.root_path + '/model/transformer/model.json', 'r') as model_file:
             self.model = json.load(model_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_info.json', 'r') as output_info_file:
+        with open(self.root_path + '/model/transformer/output_info.json', 'r') as output_info_file:
             self.output_info = json.load(output_info_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/components.json', 'r') as components_file:
+        with open(self.root_path + '/model/transformer/components.json', 'r') as components_file:
             self.components = json.load(components_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/output_dim.json', 'r') as output_dim_file:
+        with open(self.root_path + '/model/transformer/output_dim.json', 'r') as output_dim_file:
             self.output_dim = json.load(output_dim_file)
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/meta_data.json', 'r') as meta_data_file:
+        with open(self.root_path + '/model/transformer/meta_data.json', 'r') as meta_data_file:
             self.meta_data = json.load(meta_data_file)
 
         return target_index, problem_type
 
     def training_loop(self, target_index, problem_type, categorical, mixed):
 
-        total_size = sum(1 for _ in
-                         open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/training_data.csv')) - 1
+        total_size = sum(1 for _ in open(self.root_path + '/data_processing/training_data.csv')) - 1
         num_chunks = total_size // self.chunk_size + 1
         print(f'We have {num_chunks} chunks in total.')
         chunk_indices = list(range(num_chunks))
@@ -117,10 +118,11 @@ class CTABGANSynthesizer:
 
         for _ in tqdm(range(self.epochs)):
             # Chunk
+            print(f'Starting epoch {self.epochs + 1}')
             for i, chunk_idx in enumerate(chunk_indices):
                 print(f'Training {i}-th trunk.')
                 current_chunk_size = min(self.chunk_size, total_size - chunk_idx * self.chunk_size)
-                chunk = pd.read_csv('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/training_data.csv',
+                chunk = pd.read_csv(self.root_path + '/data_processing/training_data.csv',
                                     skiprows=chunk_idx * self.chunk_size + 1,
                                     nrows=current_chunk_size, header=None)
                 self.transformer = DataTransformer(training_data=chunk,
@@ -338,7 +340,7 @@ class CTABGANSynthesizer:
         # generate synthetic data and apply the final activation
         fake = self.generator(noisez)
         faket = self.Gtransformer.inverse_transform(fake)
-        fakeact = apply_activate(faket, self.transformer.output_info)
+        fakeact = apply_activate(faket, self.output_info)
         # computing classifier's target column predictions on the fake data along with returning corresponding
         # true labels
         fake_pre, fake_label = self.classifier(fakeact)
@@ -355,7 +357,7 @@ class CTABGANSynthesizer:
         # turning the generator into inference mode to effectively use running statistics in batch norm layers
         self.generator.eval()
         # column information associated with the transformer fit to the pre-processed training data
-        output_info = self.transformer.output_info
+        output_info = self.output_info
 
         # generating synthetic data in batches accordingly to the total no. required
         steps = n // self.batch_size + 1

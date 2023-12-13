@@ -19,7 +19,8 @@ class DataPreparation:
                  mixed_columns: dict,
                  integer_column: list,
                  target: dict,
-                 test_ratio: float
+                 test_ratio: float,
+                 root_path: str
                  ):
 
         self.data = raw_df
@@ -29,6 +30,7 @@ class DataPreparation:
         self.integer_column = integer_column
         self.target = target
         self.test_ratio = test_ratio
+        self.root_path = root_path
 
         self.column_types = dict()
         self.column_types["categorical"] = []
@@ -96,24 +98,21 @@ class DataPreparation:
                 self.column_types["mixed"][col_index] = self.mixed_column[col]
 
     def write_training_data(self):
-        self.data.to_csv('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/training_data.csv')
+        self.data.to_csv(self.root_path + '/data_processing/training_data.csv')
 
     def write_column_types(self):
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/column_types.json', 'w') \
+        with open(self.root_path + '/data_processing/column_types.json', 'w') \
                 as column_types_file:
             json.dump(self.column_types, column_types_file)
 
     def write_columns(self):
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/columns.json', 'w') \
-                as columns_file:
+        with open(self.root_path + '/data_processing/columns.json', 'w') as columns_file:
             json.dump(self.training_data.columns, columns_file)
 
     def write_label_encoder_list(self):
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/label_encoder_list.json', 'w') \
-                as label_encoder_list_file:
+        with open(self.root_path + '/data_processing/label_encoder_list.json', 'w') as label_encoder_list_file:
             json.dump(self.label_encoder_list, label_encoder_list_file)
 
     def write_lower_bounds(self):
-        with open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/lower_bounds.json', 'w') \
-                as lower_bounds_file:
+        with open(self.root_path + '/data_processing/lower_bounds.json', 'w') as lower_bounds_file:
             json.dump(self.lower_bounds, lower_bounds_file)
