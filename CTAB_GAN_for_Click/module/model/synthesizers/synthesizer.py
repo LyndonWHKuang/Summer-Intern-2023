@@ -5,9 +5,10 @@ import torch.utils.data
 import torch.optim as optim
 import json
 from torch.optim import Adam
+from sklearn.utils import shuffle
 
 from torch.nn import (BCELoss, CrossEntropyLoss)
-from module.model.transformers.transformer import DataTransformer
+from module.model.transformers.transformer import DataTransformer, DataInitializer
 from module.model.transformers.image_transformer import ImageTransformer
 from tqdm import tqdm
 from module.Utils import cond_loss, get_st_ed, determine_layers_disc, determine_layers_gen, apply_activate, weights_init
@@ -23,16 +24,27 @@ class CTABGANSynthesizer:
     """
 
     def __init__(self,
+                 chunk_size,
                  class_dim=(256, 256, 256, 256),
                  random_dim=100,
                  num_channels=64,
                  l2scale=1e-5,
                  batch_size=500,
-                 epochs=1):
+                 epochs=1
+                 ):
         """
         Initializes the model with user specified parameters.
         """
 
+        self.meta_data = None
+        self.optimizerC = None
+        self.optimizerD = None
+        self.optimizerG = None
+        self.classifier = None
+        self.c_loss = None
+        self.data_initializer = None
+        self.discriminator = None
+        self.output_dim = None
         self.components = None
         self.output_info = None
         self.model = None
@@ -50,6 +62,7 @@ class CTABGANSynthesizer:
         self.epochs = epochs
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.generator = None
+        self.chunk_size = chunk_size
 
     def fit(self, train_data=pd.DataFrame, categorical=None, mixed=None, types=None):
         """
@@ -63,16 +76,8 @@ class CTABGANSynthesizer:
             mixed = {}
         if categorical is None:
             categorical = []
-        train_data, target_index, problem_type = self.preprocess_data(train_data, categorical, mixed, types)
-
-        # Initializing the networks and their optimizers
-        data_sampler, discriminator, optimizerG, optimizerD, classifier, optimizerC, st_ed = \
-            self.initialize_networks(train_data, target_index, problem_type)
-
-        steps_per_epoch = max(1, len(train_data) // self.batch_size)
-        # Execute the training
-        self.training_loop(train_data, steps_per_epoch, data_sampler, optimizerG, optimizerD, classifier,
-                           optimizerC, st_ed, problem_type, discriminator)
+        target_index, problem_type = self.preprocess_data(train_data, categorical, mixed, types)
+        self.training_loop(target_index, problem_type, categorical, mixed)
 
     def preprocess_data(self, train_data, categorical, mixed, types):
         problem_type = None
@@ -83,10 +88,10 @@ class CTABGANSynthesizer:
             if problem_type:
                 target_index = train_data.columns.get_loc(types[problem_type])
 
-        self.transformer = DataTransformer(training_data=train_data, categorical_column=categorical, 
-                                           mixed_column=mixed)
-        self.transformer.fit()
-        del self.transformer
+        self.data_initializer = DataInitializer(training_data=train_data, categorical_column=categorical,
+                                                mixed_column=mixed)
+        self.data_initializer.fit()
+        del self.data_initializer
 
         with open('/content/drive/MyDrive/CTABGANforClickThrough/model.json', 'r') as model_file:
             self.model = json.load(model_file)
@@ -95,16 +100,56 @@ class CTABGANSynthesizer:
         with open('/content/drive/MyDrive/CTABGANforClickThrough/components.json', 'r') as components_file:
             self.components = json.load(components_file)
         with open('/content/drive/MyDrive/CTABGANforClickThrough/output_dim.json', 'r') as output_dim_file:
-            self.output_info = json.load(output_dim_file)
+            self.output_dim = json.load(output_dim_file)
+        with open('/content/drive/MyDrive/CTABGANforClickThrough/meta_data.json', 'r') as meta_data_file:
+            self.meta_data = json.load(meta_data_file)
 
-        train_data = self.transformer.transform(train_data.values)
+        return target_index, problem_type
 
-        return train_data, target_index, problem_type
+    def training_loop(self, target_index, problem_type, categorical, mixed):
 
-    def initialize_networks(self, train_data, target_index, problem_type):
-        data_dim = self.transformer.output_dim
-        data_sampler = RealDataSampler(train_data, self.transformer.output_info)
-        self.cond_generator = ConditionalVectorSampler(train_data, self.transformer.output_info)
+        total_size = sum(1 for _ in
+                         open('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/training_data.csv')) - 1
+        num_chunks = total_size // self.chunk_size + 1
+        print(f'We have {num_chunks} chunks in total.')
+        chunk_indices = list(range(num_chunks))
+        chunk_indices = shuffle(chunk_indices)
+
+        for _ in tqdm(range(self.epochs)):
+            # Chunk
+            for i, chunk_idx in enumerate(chunk_indices):
+                print(f'Training {i}-th trunk.')
+                current_chunk_size = min(self.chunk_size, total_size - chunk_idx * self.chunk_size)
+                chunk = pd.read_csv('/content/drive/MyDrive/CTABGANforClickThrough/data_processing/training_data.csv',
+                                    skiprows=chunk_idx * self.chunk_size + 1,
+                                    nrows=current_chunk_size, header=None)
+                self.transformer = DataTransformer(training_data=chunk,
+                                                   categorical_column=categorical,
+                                                   mixed_column=mixed,
+                                                   model=self.model,
+                                                   components=self.components,
+                                                   output_dim=self.output_dim,
+                                                   output_info=self.output_info,
+                                                   meta_data=self.meta_data)
+                train_data = self.transformer.transform(chunk.values)
+
+                # Initializing the networks and their optimizers
+                data_sampler, st_ed = self.initialize_networks(train_data, target_index)
+                steps_per_epoch = max(1, len(train_data) // self.batch_size)
+
+                # Execute the training
+                for _ in range(steps_per_epoch):
+                    real_cat_d, real = self.train_discriminator(data_sampler)
+                    noisez = self.train_generator(self.discriminator, real_cat_d)
+
+                    if problem_type:
+                        self.train_classifier(st_ed, real)
+                        self.train_generator_with_classifier(st_ed, noisez)
+
+    def initialize_networks(self, train_data, target_index):
+        data_dim = self.output_dim
+        data_sampler = RealDataSampler(train_data, self.output_info)
+        self.cond_generator = ConditionalVectorSampler(train_data, self.output_info)
 
         sides = [4, 8, 16, 24, 32]
         col_size_d = data_dim + self.cond_generator.n_options
@@ -122,41 +167,38 @@ class CTABGANSynthesizer:
 
         layers_G = determine_layers_gen(self.gside, self.random_dim + self.cond_generator.n_options, self.num_channels)
         layers_D = determine_layers_disc(self.dside, self.num_channels)
-        self.generator = Generator(layers_G).to(self.device)
-        discriminator = Discriminator(layers_D).to(self.device)
+        if self.generator is None:
+            self.generator = Generator(layers_G).to(self.device)
+        if self.discriminator is None:
+            self.discriminator = Discriminator(layers_D).to(self.device)
 
         optimizer_params = dict(lr=2e-4, betas=(0.5, 0.9), eps=1e-3, weight_decay=self.l2scale)
-        optimizerG = Adam(self.generator.parameters(), **optimizer_params)
-        optimizerD = Adam(discriminator.parameters(), **optimizer_params)
+
+        if self.optimizerG is None:
+            self.optimizerG = Adam(self.generator.parameters(), **optimizer_params)
+        if self.optimizerD is None:
+            self.optimizerD = Adam(self.discriminator.parameters(), **optimizer_params)
 
         st_ed = None
-        classifier = None
-        optimizerC = None
         if target_index is not None:
-            st_ed = get_st_ed(target_index, self.transformer.output_info)
-            classifier = Classifier(data_dim, self.class_dim, st_ed).to(self.device)
-            optimizerC = optim.Adam(classifier.parameters(), **optimizer_params)
+            st_ed = get_st_ed(target_index, self.output_info)
+            if self.classifier is None:
+                self.classifier = Classifier(data_dim, self.class_dim, st_ed).to(self.device)
+            if self.optimizerC is None:
+                self.optimizerC = optim.Adam(self.classifier.parameters(), **optimizer_params)
 
         self.generator.apply(weights_init)
-        discriminator.apply(weights_init)
+        self.discriminator.apply(weights_init)
 
-        self.Gtransformer = ImageTransformer(self.gside)
-        self.Dtransformer = ImageTransformer(self.dside)
+        if self.Gtransformer is None:
+            self.Gtransformer = ImageTransformer(self.gside)
 
-        return data_sampler, discriminator, optimizerG, optimizerD, classifier, optimizerC, st_ed
+        if self.Dtransformer is None:
+            self.Dtransformer = ImageTransformer(self.dside)
 
-    def training_loop(self, train_data, steps_per_epoch, data_sampler, optimizerG, optimizerD, classifier, optimizerC,
-                      st_ed, problem_type, discriminator):
-        for i in tqdm(range(self.epochs)):
-            for _ in range(steps_per_epoch):
-                real_cat_d, real = self.train_discriminator(data_sampler, optimizerD, discriminator)
-                noisez = self.train_generator(optimizerG, discriminator, real_cat_d)
+        return data_sampler, st_ed
 
-                if problem_type:
-                    self.train_classifier(optimizerC, classifier, st_ed, real)
-                    self.train_generator_with_classifier(optimizerG, classifier, st_ed, noisez)
-
-    def train_discriminator(self, data_sampler, optimizerD, discriminator):
+    def train_discriminator(self, data_sampler):
         # discriminator training steps go here
         # sampling noise vectors using a standard normal distribution
         flag = False
@@ -199,13 +241,13 @@ class CTABGANSynthesizer:
         fake_cat_d = self.Dtransformer.transform(fake_cat)
 
         # executing the gradient update step for the discriminator
-        optimizerD.zero_grad()
+        self.optimizerD.zero_grad()
         # computing the probability of the discriminator to correctly classify real samples hence
         # y_real should ideally be close to 1
-        y_real, _ = discriminator(real_cat_d)
+        y_real, _ = self.discriminator(real_cat_d)
         # computing the probability of the discriminator to correctly classify fake samples hence
         # y_fake should ideally be close to 0
-        y_fake, _ = discriminator(fake_cat_d)
+        y_fake, _ = self.discriminator(fake_cat_d)
         # computing the loss to essentially maximize the log likelihood of correctly classifying
         # real and fake samples as log(D(x))+log(1−D(G(z)))
         # or equivalently minimizing the negative of log(D(x))+log(1−D(G(z))) as done below
@@ -213,10 +255,10 @@ class CTABGANSynthesizer:
         # accumulating gradients based on the loss
         loss_d.backward()
         # computing the backward step to update weights of the discriminator
-        optimizerD.step()
+        self.optimizerD.step()
         return real_cat_d, real
 
-    def train_generator(self, optimizerG, discriminator, real_cat_d):
+    def train_generator(self, discriminator, real_cat_d):
         # generator training steps go here
         # similarly sample noise vectors and conditional vectors
         noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
@@ -228,7 +270,7 @@ class CTABGANSynthesizer:
         noisez = noisez.view(self.batch_size, self.random_dim + self.cond_generator.n_options, 1, 1)
 
         # executing the gradient update step for the generator
-        optimizerG.zero_grad()
+        self.optimizerG.zero_grad()
 
         # similarly generating synthetic data and applying final activation
         fake = self.generator(noisez)
@@ -265,10 +307,10 @@ class CTABGANSynthesizer:
         # computing the finally accumulated gradients
         loss_info.backward()
         # executing the backward step to update the weights
-        optimizerG.step()
+        self.optimizerG.step()
         return noisez
 
-    def train_classifier(self, optimizerC, classifier, st_ed, real):
+    def train_classifier(self, st_ed, real):
         # classifier training steps go here
         self.c_loss = None
         # in case of binary classification, the binary cross entropy loss is used
@@ -279,34 +321,34 @@ class CTABGANSynthesizer:
             self.c_loss = CrossEntropyLoss()
 
         # updating the weights of the classifier
-        optimizerC.zero_grad()
+        self.optimizerC.zero_grad()
         # computing classifier's target column predictions on the real data along with returning
         # corresponding true labels
-        real_pre, real_label = classifier(real)
+        real_pre, real_label = self.classifier(real)
         if (st_ed[1] - st_ed[0]) == 2:
             real_label = real_label.type_as(real_pre)
         # computing the loss to train the classifier so that it can perform well on the real data
         loss_cc = self.c_loss(real_pre, real_label)
         loss_cc.backward()
-        optimizerC.step()
+        self.optimizerC.step()
 
-    def train_generator_with_classifier(self, optimizerG, classifier, st_ed, noisez):
+    def train_generator_with_classifier(self, st_ed, noisez):
         # updating the weights of the generator
-        optimizerG.zero_grad()
+        self.optimizerG.zero_grad()
         # generate synthetic data and apply the final activation
         fake = self.generator(noisez)
         faket = self.Gtransformer.inverse_transform(fake)
         fakeact = apply_activate(faket, self.transformer.output_info)
         # computing classifier's target column predictions on the fake data along with returning corresponding
         # true labels
-        fake_pre, fake_label = classifier(fakeact)
+        fake_pre, fake_label = self.classifier(fakeact)
         if (st_ed[1] - st_ed[0]) == 2:
             fake_label = fake_label.type_as(fake_pre)
         # computing the loss to train the generator to improve semantic integrity between target column and
         # rest of the data
         loss_cg = self.c_loss(fake_pre, fake_label)
         loss_cg.backward()
-        optimizerG.step()
+        self.optimizerG.step()
 
     def sample(self, n):
 

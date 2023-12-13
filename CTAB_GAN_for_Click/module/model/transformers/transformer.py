@@ -4,7 +4,7 @@ from sklearn.mixture import BayesianGaussianMixture
 import json
 
 
-class DataTransformer:
+class DataInitializer:
     """
         Transformer class responsible for processing data to train the CTABGANSynthesizer model
 
@@ -147,6 +147,33 @@ class DataTransformer:
             json.dump(self.components, components_file)
         with open('/content/drive/MyDrive/CTABGANforClickThrough/output_dim.json', 'w') as output_dim_file:
             json.dump(self.output_dim, output_dim_file)
+
+
+class DataTransformer:
+    def __init__(self,
+                 meta_data: dict,
+                 training_data: pd.DataFrame,
+                 categorical_column: list,
+                 mixed_column: dict,
+                 model: list,
+                 components: list,
+                 output_info: list,
+                 output_dim: int,
+                 n_cluster=10,
+                 eps=0.005
+                 ):
+        self.meta_data = meta_data
+        self.training_data = training_data
+        self.categorical_columns = categorical_column
+        self.mixed_columns = mixed_column
+        self.n_clusters = n_cluster
+        self.eps = eps
+        self.ordering = []
+        self.output_info = output_info
+        self.output_dim = output_dim
+        self.components = components
+        self.filter_arr = []
+        self.model = model
 
     def transform(self, data):
         # stores the transformed values
@@ -402,4 +429,3 @@ class DataTransformer:
                 data_t[:, id_] = list(map(info['i2s'].__getitem__, idx))
                 st += info['size']
         return data_t
-
