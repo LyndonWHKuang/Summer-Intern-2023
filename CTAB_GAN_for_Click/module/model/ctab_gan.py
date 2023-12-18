@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 import time
+import joblib
 
 from module.data_processing.data_preparation import DataPreparation
 from module.data_processing.data_preprocessing import DataPreprocessing
@@ -60,10 +61,9 @@ class CTABGAN:
         self.target = target
         self.num_epochs = num_epochs
         self.chunk_size = chunk_size
-        self.synthesizer = CTABGANSynthesizer(chunk_size=self.chunk_size)
         self.training_time = 0
         self.root_path = root_path
-        # self.chunk_csv_file = chunk_csv_path
+        self.synthesizer = CTABGANSynthesizer(chunk_size=self.chunk_size, root_path=self.root_path)
 
     def fit(self):
         start_time = time.time()
@@ -99,10 +99,9 @@ class CTABGAN:
             self.column_types = json.load(column_types_file)
         with open(self.root_path + '/data_processing/lower_bounds.json', 'r') as lower_bounds_file:
             self.lower_bounds = json.load(lower_bounds_file)
-        with open(self.root_path + '/data_processing/label_encoder_list.json', 'r') as label_encoder_list_file:
-            self.label_encoder_list = json.load(label_encoder_list_file)
         with open(self.root_path + '/data_processing/columns.json', 'r') as columns_file:
             self.columns = json.load(columns_file)
+        self.label_encoder_list = joblib.load(self.root_path + '/data_processing/label_encoder_list.joblib')
 
         self.synthesizer.fit(train_data=data,
                              categorical=self.column_types["categorical"],
@@ -117,7 +116,7 @@ class CTABGAN:
         print(f'Finished training in {self.training_time} seconds.')
 
     def generate_samples(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        sample = self.synthesizer.sample(self.sample_length / 100)
+        sample = self.synthesizer.sample(self.sample_length)
         postprocessed_data = DataPostprocessing(generated_data=sample,
                                                 training_data_columns=self.columns,
                                                 categorical_columns=self.categorical_columns,

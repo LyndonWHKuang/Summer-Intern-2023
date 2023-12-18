@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.mixture import BayesianGaussianMixture
 import json
+import joblib
 
 
 class DataInitializer:
@@ -69,20 +70,19 @@ class DataInitializer:
                 meta.append({
                     "name": index,
                     "type": "mixed",
-                    "min": column.min(),
-                    "max": column.max(),
+                    "min": int(column.min()),
+                    "max": int(column.max()),
                     "modal": self.mixed_columns[index]
                 })
             else:
                 meta.append({
                     "name": index,
                     "type": "continuous",
-                    "min": column.min(),
-                    "max": column.max(),
+                    "min": int(column.min()),
+                    "max": int(column.max()),
                 })
         self.meta_data = meta
-        with open(self.root_path + '/model/transformer/meta_data.json', 'w') as json_file:
-            json.dump(self.meta_data, json_file)
+        joblib.dump(self.meta_data, self.root_path + '/model/transformers/meta_data.joblib')
 
     def fit_bgm(self, data_column):
         gm = BayesianGaussianMixture(
@@ -109,10 +109,11 @@ class DataInitializer:
                 model.append(gm)
 
                 comp = self.find_relevant_modes(gm, data[:, id_])
+                comp = [int(value) for value in comp]
                 self.components.append(comp)
 
-                self.output_info += [(1, 'tanh'), (np.sum(comp), 'softmax')]
-                self.output_dim += 1 + np.sum(comp)
+                self.output_info += [(int(1), 'tanh'), (int(np.sum(comp)), 'softmax')]
+                self.output_dim += int(1 + np.sum(comp))
 
             elif info['type'] == "mixed":
                 gm1 = self.fit_bgm(data[:, id_])
@@ -129,10 +130,11 @@ class DataInitializer:
                 model.append((gm1, gm2))
 
                 comp = self.find_relevant_modes(gm2, data[:, id_][filter_arr])
+                comp = [int(value) for value in comp]
                 self.components.append(comp)
 
-                self.output_info += [(1, 'tanh'), (np.sum(comp) + len(info['modal']), 'softmax')]
-                self.output_dim += 1 + np.sum(comp) + len(info['modal'])
+                self.output_info += [(int(1), 'tanh'), (int(np.sum(comp) + len(info['modal'])), 'softmax')]
+                self.output_dim += int(1 + np.sum(comp) + len(info['modal']))
 
             else:
                 model.append(None)
@@ -141,13 +143,12 @@ class DataInitializer:
                 self.output_dim += info['size']
 
         self.model = model
-        with open(self.root_path + '/model/transformer/model.json', 'w') as model_file:
-            json.dump(self.model, model_file)
-        with open(self.root_path + '/model/transformer/output_info.json', 'w') as output_info_file:
+        joblib.dump(self.model, self.root_path + '/model/transformers/model.joblib')
+        with open(self.root_path + '/model/transformers/output_info.json', 'w') as output_info_file:
             json.dump(self.output_info, output_info_file)
-        with open(self.root_path + '/model/transformer/components.json', 'w') as components_file:
+        with open(self.root_path + '/model/transformers/components.json', 'w') as components_file:
             json.dump(self.components, components_file)
-        with open(self.root_path + '/model/transformer/output_dim.json', 'w') as output_dim_file:
+        with open(self.root_path + '/model/transformers/output_dim.json', 'w') as output_dim_file:
             json.dump(self.output_dim, output_dim_file)
 
 

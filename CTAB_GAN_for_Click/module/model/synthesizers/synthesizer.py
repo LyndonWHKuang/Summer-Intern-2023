@@ -4,6 +4,7 @@ import torch
 import torch.utils.data
 import torch.optim as optim
 import json
+import joblib
 from torch.optim import Adam
 from sklearn.utils import shuffle
 
@@ -95,16 +96,23 @@ class CTABGANSynthesizer:
         self.data_initializer.fit()
         del self.data_initializer
 
-        with open(self.root_path + '/model/transformer/model.json', 'r') as model_file:
-            self.model = json.load(model_file)
-        with open(self.root_path + '/model/transformer/output_info.json', 'r') as output_info_file:
+        self.model = joblib.load(self.root_path + '/model/transformers/model.joblib')
+        with open(self.root_path + '/model/transformers/output_info.json', 'r') as output_info_file:
             self.output_info = json.load(output_info_file)
-        with open(self.root_path + '/model/transformer/components.json', 'r') as components_file:
-            self.components = json.load(components_file)
-        with open(self.root_path + '/model/transformer/output_dim.json', 'r') as output_dim_file:
+        with open(self.root_path + '/model/transformers/components.json', 'r') as components_file:
+            loaded_comp = json.load(components_file)
+        self.components = []
+        for comp in loaded_comp:
+            if comp is not None:
+                # Convert each integer in the list back to a boolean
+                converted_comp = [bool(value) for value in comp]
+                self.components.append(converted_comp)
+            else:
+                # Keep None as is
+                self.components.append(None)
+        with open(self.root_path + '/model/transformers/output_dim.json', 'r') as output_dim_file:
             self.output_dim = json.load(output_dim_file)
-        with open(self.root_path + '/model/transformer/meta_data.json', 'r') as meta_data_file:
-            self.meta_data = json.load(meta_data_file)
+        self.meta_data = joblib.load(self.root_path + '/model/transformers/meta_data.joblib')
 
         return target_index, problem_type
 
@@ -116,11 +124,11 @@ class CTABGANSynthesizer:
         chunk_indices = list(range(num_chunks))
         chunk_indices = shuffle(chunk_indices)
 
-        for _ in tqdm(range(self.epochs)):
+        for i in tqdm(range(self.epochs)):
             # Chunk
-            print(f'Starting epoch {self.epochs + 1}')
-            for i, chunk_idx in enumerate(chunk_indices):
-                print(f'Training {i}-th trunk.')
+            print(f'Starting epoch {i + 1}')
+            for j, chunk_idx in enumerate(chunk_indices):
+                print(f'Training {j}-th chunk.')
                 current_chunk_size = min(self.chunk_size, total_size - chunk_idx * self.chunk_size)
                 chunk = pd.read_csv(self.root_path + '/data_processing/training_data.csv',
                                     skiprows=chunk_idx * self.chunk_size + 1,
@@ -209,23 +217,25 @@ class CTABGANSynthesizer:
             # sampling conditional vectors
             noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
             condvec = self.cond_generator.sample_for_training(self.batch_size)
-            c, m, col, opt = condvec
-            c = torch.from_numpy(c).to(self.device)
-            m = torch.from_numpy(m).to(self.device)
+            vec, mask, idx, selected_categories = condvec
+            vec = torch.from_numpy(vec).to(self.device)
+            mask = torch.from_numpy(mask).to(self.device)
             # concatenating conditional vectors and converting resulting noise vectors into the image domain
             # to be fed to the generator as input
-            noisez = torch.cat([noisez, c], dim=1)
+            noisez = torch.cat([noisez, vec], dim=1)
             noisez = noisez.view(self.batch_size, self.random_dim + self.cond_generator.n_options, 1, 1)
 
             # sampling real data according to the conditional vectors and shuffling it before feeding to discriminator
             # to isolate conditional loss on generator
             perm = np.arange(self.batch_size)
             np.random.shuffle(perm)
-            real, flag = data_sampler.sample_data(self.batch_size, col[perm], opt[perm])
+            # print(f"dimension of idx[perm] {idx[perm].shape[0]}")
+            # print(f"dimension of selected_categories[perm]{selected_categories[perm].shape[0]}")
+            real, flag = data_sampler.sample_data(self.batch_size, idx[perm], selected_categories[perm])
             real = torch.from_numpy(real.astype('float32')).to(self.device)
 
         # storing shuffled ordering of the conditional vectors
-        c_perm = c[perm]
+        c_perm = vec[perm]
         # generating synthetic data as an image
         fake = self.generator(noisez)
         # converting it into the tabular domain as per format of the transformed training data
@@ -234,8 +244,10 @@ class CTABGANSynthesizer:
         fakeact = apply_activate(faket, self.transformer.output_info)
 
         # the generated data is then concatenated with the corresponding condition vectors
-        fake_cat = torch.cat([fakeact, c], dim=1)
+        fake_cat = torch.cat([fakeact, vec], dim=1)
         # the real data is also similarly concatenated with corresponding conditional vectors
+        # print(f"dimension of real {real.shape[0]}")
+        # print(f"dimension of c_perm {c_perm.shape[0]}")
         real_cat = torch.cat([real, c_perm], dim=1)
 
         # transforming the real and synthetic data into the image domain for feeding it to the discriminator

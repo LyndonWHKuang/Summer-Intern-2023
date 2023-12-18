@@ -30,7 +30,6 @@ class DataPreprocessing:
     def preprocess(self):
         self.data = pd.read_csv(self.raw_csv_path)
         print("Finished reading")
-        print(self.data.head(5))
         self.data_transformation()
         self.handle_missing_values()
         self.handle_superfluous_categories()
@@ -100,7 +99,7 @@ class DataPreprocessing:
                 self.data[col] = self.data[col].apply(lambda x: "others" if x in minor_terms_set else x)
 
     def write_processed_data(self):
-        self.data.to_csv(self.processed_csv_path)
+        self.data.to_csv(self.processed_csv_path, index=False)
 
     def write_integer_columns(self):
         with open(self.root_path + '/data_processing/integer_columns.json', 'w') as integer_columns_file:

@@ -11,42 +11,8 @@ from dython.nominal import associations
 from scipy.stats import wasserstein_distance
 from scipy.spatial import distance
 import warnings
-from sklearn.preprocessing import LabelEncoder
 
 warnings.filterwarnings("ignore")
-
-def data_preparation(real_path, fake_paths, categ_col, problem_type, transformed_real_root, transformed_fake_root, dataset):
-    target_col = list(problem_type.values())[0]
-    data_real = pd.read_csv(real_path)
-    for col in data_real.columns:
-        if col in categ_col:
-            data_real[col] = data_real[col].fillna("?")
-            le = LabelEncoder()
-            data_real[col] = le.fit_transform(data_real[col])
-        else:
-            data_real[col].fillna(data_real[col].mean(), inplace=True)
-        if col in target_col:
-            real_tar_col = data_real.pop(col)
-            data_real.insert(len(data_real.columns), real_tar_col.name, real_tar_col)
-    data_real.to_csv(transformed_real_root + "/" + dataset + "/" + dataset + "_real_transformed.csv", index=False)
-
-    for idx, fake_path in enumerate(fake_paths):
-        data_fake = pd.read_csv(fake_path)
-        for col in data_fake.columns:
-            if col in categ_col:
-                data_fake[col] = data_fake[col].fillna("?")
-                le = LabelEncoder()
-                data_fake[col] = le.fit_transform(data_fake[col])
-            else:
-                data_fake[col].fillna(data_fake[col].mean(), inplace=True)
-            if col in target_col:
-                fake_tar_col = data_fake.pop(col)
-                data_fake.insert(len(data_fake.columns), fake_tar_col.name, fake_tar_col)
-        data_fake.to_csv(transformed_fake_root + "/" + dataset + "/" + dataset + "_fake_transformed{exp}.csv".format(exp=idx), index=False)
-
-
-
-
 
 def supervised_model_training(x_train, y_train, x_test, y_test, model_name):
     """
@@ -97,8 +63,7 @@ def supervised_model_training(x_train, y_train, x_test, y_test, model_name):
         return [acc, auc, f1_score]
 
 
-def get_utility_metrics(real_path, fake_paths, scaler="MinMax", classifiers=["lr", "dt", "rf", "mlp"], test_ratio=.20,
-                        categorical_columns = None):
+def get_utility_metrics(real_path, fake_paths, scaler="MinMax", classifiers=["lr", "dt", "rf", "mlp"], test_ratio=.20):
     """
     Returns ML utility metrics
 

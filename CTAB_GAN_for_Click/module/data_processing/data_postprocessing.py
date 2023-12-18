@@ -34,22 +34,27 @@ class DataPostprocessing:
         self.eps = eps
 
     def inverse_most(self):
-        self.inverse_encoding_categorical_columns()
-        self.inverse_log_transform()
-        self.round_integer()
-        self.fill_categorical_minor_terms()
-        self.recover_missing_value()
+        transformed_data_sample = pd.DataFrame(self.data, columns=self.training_data_columns)
+        self.round_integer(transformed_data_sample)
+        transformed_data_sample['Hour'] = transformed_data_sample['Hour'].apply(lambda x: max(0, x))
+        transformed_data_sample['Hour'] = transformed_data_sample['Hour'].apply(lambda x: min(23, x))
+        return transformed_data_sample
 
     def inverse_all(self):
-        self.inverse_most()
+        self.inverse_encoding_categorical_columns()
+        self.inverse_log_transform()
+        self.fill_categorical_minor_terms()
+        self._round_integer()
+        self.recover_missing_value()
         self.merge_date()
+        return self.data_sample
 
     def inverse_encoding_categorical_columns(self):
         self.data_sample = pd.DataFrame(self.data, columns=self.training_data_columns)
         for i in range(len(self.label_encoder_list)):
             le = self.label_encoder_list[i]["label_encoder"]
             col = self.label_encoder_list[i]["column"]
-            self.data_sample[col] = le.inverse_transform(self.data_sample[col])
+            self.data_sample[col] = le.inverse_transform(self.data_sample[col].astype(int))
 
     def inverse_log_transform(self):
         if self.log_columns:
@@ -66,7 +71,13 @@ class DataPostprocessing:
                     self.data_sample[column] = self.data_sample[column].apply(
                         lambda x: np.exp(x) - self.eps + lower_bound if x != -9999999 else -9999999)
 
-    def round_integer(self):
+    def round_integer(self, data: pd.DataFrame):
+        if self.integer_column:
+            for column in self.integer_column:
+                data[column] = (np.round(data[column].values)).astype(int)
+        return data
+
+    def _round_integer(self):
         if self.integer_column:
             for column in self.integer_column:
                 self.data_sample[column] = (np.round(self.data_sample[column].values)).astype(int)

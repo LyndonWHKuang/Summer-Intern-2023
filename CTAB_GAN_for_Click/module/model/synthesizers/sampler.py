@@ -21,7 +21,7 @@ class ConditionalVectorSampler:
 
     def __init__(self, data: np.ndarray, output_info: List[Tuple[int, str]]):
         self.categories = []
-        self.intervals = np.array([])
+        self.intervals = []
         self.n_cols = 0
         self.n_options = 0
         self.log_prob_distributions = []
@@ -38,7 +38,7 @@ class ConditionalVectorSampler:
             elif item[1] == 'softmax':
                 ed = st + item[0]
                 self.categories.append(np.argmax(data[:, st:ed], axis=-1))
-                self.intervals = np.append(self.intervals, (self.n_options, item[0]))
+                self.intervals.append((self.n_options, item[0]))
                 self.n_cols += 1
                 self.n_options += item[0]
                 freq = np.sum(data[:, st:ed], axis=0)

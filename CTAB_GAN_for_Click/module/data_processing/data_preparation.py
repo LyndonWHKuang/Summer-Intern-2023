@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import json
+import joblib
 
 from sklearn import preprocessing
 from sklearn import model_selection
@@ -39,6 +40,8 @@ class DataPreparation:
         self.label_encoder_list = []
         self.categorical_columns_minor_terms = {}
         self.training_data = pd.DataFrame()
+
+        self._prepare()
 
     def _prepare(self):
         self.split_data()
@@ -98,7 +101,7 @@ class DataPreparation:
                 self.column_types["mixed"][col_index] = self.mixed_column[col]
 
     def write_training_data(self):
-        self.data.to_csv(self.root_path + '/data_processing/training_data.csv')
+        self.training_data.to_csv(self.root_path + '/data_processing/training_data.csv', index=False)
 
     def write_column_types(self):
         with open(self.root_path + '/data_processing/column_types.json', 'w') \
@@ -107,11 +110,10 @@ class DataPreparation:
 
     def write_columns(self):
         with open(self.root_path + '/data_processing/columns.json', 'w') as columns_file:
-            json.dump(self.training_data.columns, columns_file)
+            json.dump(list(self.training_data.columns), columns_file)
 
     def write_label_encoder_list(self):
-        with open(self.root_path + '/data_processing/label_encoder_list.json', 'w') as label_encoder_list_file:
-            json.dump(self.label_encoder_list, label_encoder_list_file)
+        joblib.dump(self.label_encoder_list, self.root_path + '/data_processing/label_encoder_list.joblib')
 
     def write_lower_bounds(self):
         with open(self.root_path + '/data_processing/lower_bounds.json', 'w') as lower_bounds_file:
